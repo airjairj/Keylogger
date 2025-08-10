@@ -1,4 +1,18 @@
+# NECESSARY
+# pip install pycryptodome
 import socket
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
+AES_KEY = b"AfterLifeDeath00"  # 16 bytes, must match client
+AES_IV = b"AfterDeathLife00"  # 16 bytes, must match client
+
+def decrypt_data(data):
+    cipher = AES.new(AES_KEY, AES.MODE_CBC, AES_IV)
+    try:
+        decrypted = unpad(cipher.decrypt(data), AES.block_size)
+        return decrypted.decode(errors='ignore')
+    except Exception as e:
+        return f"[DECRYPT ERROR] {e}\n"
 
 HOST = '127.0.0.1'
 PORT = 5000
@@ -23,10 +37,13 @@ def main():
                             if not data:
                                 print(f"Connessione chiusa da {addr}")
                                 break
-                            print(data.decode(errors='ignore'), end='', flush=True)
+                            # Decrypt and print
+                            decrypted = decrypt_data(data)
+                            print(decrypted, end='', flush=True)
         except Exception as e:
-            print(f"[ERRORE SERVER] {e}. Riavvio tra 2 secondi...")
+            print(f"\n[ERRORE SERVER] {e}. Riavvio tra 2 secondi...")
             time.sleep(2)
 
 if __name__ == "__main__":
     main()
+    

